@@ -170,6 +170,18 @@ func (s *Solver) buildChallengeUrl(ch *cmacme.Challenge) *url.URL {
 	return url
 }
 
+type ProxyConnWrapper struct {
+	net.Conn
+}
+
+func (w ProxyConnWrapper) Write(p []byte) (n int, err error) {
+	// head := []byte("PROXY TCP4 0.0.0.0 0.0.0.0 80 80\r\n")
+	head := []byte("PROXY TCP4 127.0.0.1 127.0.0.1 0 80\r\n")
+	buf := append(head, p...)
+	n, err = w.Conn.Write(buf)
+	return
+}
+
 // testReachability will attempt to connect to the 'domain' with 'path' and
 // check if the returned body equals 'key'
 func testReachability(ctx context.Context, url *url.URL, key string) error {
@@ -195,6 +207,13 @@ func testReachability(ctx context.Context, url *url.URL, key string) error {
 		DisableKeepAlives: true,
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: true,
+		},
+		Dial: func(network, a string) (net.Conn, error) {
+			realConn, err := net.Dial(network, a)
+			if err != nil {
+				return nil, err
+			}
+			return &ProxyConnWrapper{Conn: realConn}, nil
 		},
 	}
 	client := http.Client{
